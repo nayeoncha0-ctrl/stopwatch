@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>눈 오는 날 산책 스탑워치</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+  :root { --pink:#ff8fa8; --pink-d:#f0728f; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; background:#cfe3f5;
+    font-family:'Pretendard',-apple-system,'Malgun Gothic',system-ui,sans-serif; color:#fff; }
+  #stage { position:fixed; inset:0; width:100%; height:100%; display:block; }
+
+  .glass { background:rgba(36,48,92,.38); border:1px solid rgba(255,255,255,.35); border-radius:28px;
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); box-shadow:0 10px 40px rgba(20,30,70,.25); }
+  #hud { position:fixed; top:clamp(12px,3vh,32px); left:50%; transform:translateX(-50%);
+    padding:16px 24px 20px; text-align:center; width:min(92vw,440px); }
+  #chip { display:inline-block; font-size:14px; font-weight:600; padding:5px 14px; border-radius:99px;
+    background:rgba(255,255,255,.2); letter-spacing:-.2px; }
+  #display { font-size:clamp(52px,10vw,92px); font-weight:800; letter-spacing:-1px; line-height:1.1; margin:8px 0 12px;
+    font-variant-numeric:tabular-nums; text-shadow:0 3px 14px rgba(20,30,70,.35); }
+  #display small { font-size:.45em; font-weight:600; opacity:.75; letter-spacing:0; }
+  .btns { display:flex; gap:10px; }
+  button { flex:1; font-family:inherit; font-size:17px; font-weight:700; padding:13px 10px; border:none; border-radius:99px;
+    cursor:pointer; color:#fff; background:var(--pink); box-shadow:0 4px 0 var(--pink-d); transition:transform .08s, box-shadow .08s; }
+  button:active { transform:translateY(3px); box-shadow:0 1px 0 var(--pink-d); }
+  button.stop { background:#ff7f6e; box-shadow:0 4px 0 #dd5f4d; }
+  button.stop:active { box-shadow:0 1px 0 #dd5f4d; }
+  button.sec { background:rgba(255,255,255,.28); box-shadow:0 4px 0 rgba(255,255,255,.16); }
+  button.sec:active { box-shadow:0 1px 0 rgba(255,255,255,.16); }
+  button:disabled { opacity:.5; cursor:default; }
+
+  #lapsPanel { position:fixed; right:clamp(12px,2vw,28px); top:clamp(12px,3vh,32px); width:min(240px,42vw); padding:14px 16px; display:none; }
+  #lapsPanel h3 { margin:0 0 6px; font-size:14px; font-weight:700; opacity:.85; }
+  ul { list-style:none; margin:0; padding:0; max-height:42vh; overflow-y:auto; }
+  li { display:flex; justify-content:space-between; gap:8px; padding:7px 0; border-top:1px solid rgba(255,255,255,.18);
+    font-size:14px; font-weight:500; font-variant-numeric:tabular-nums; }
+  li span:first-child { opacity:.7; }
+  li.best { color:#8bf0b0; } li.worst { color:#ffa89c; }
+  .hint { position:fixed; bottom:10px; left:0; right:0; text-align:center; font-size:12px; font-weight:500;
+    color:rgba(40,55,95,.7); pointer-events:none; }
+
+  /* 강아지 애니메이션 */
+  .legA, .legB, .bob { animation-play-state:paused; }
+  .walking .legA, .walking .legB, .walking .bob { animation-play-state:running; }
+  .legA { animation:swing .7s linear infinite; }
+  .legB { animation:swing .7s linear infinite -.35s; }
+  @keyframes swing { 0%,50%,100%{transform:rotate(0)} 25%{transform:rotate(22deg)} 75%{transform:rotate(-22deg)} }
+  .bob { animation:bob .35s ease-in-out infinite; }
+  @keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-2.5px)} }
+  .tail { animation:wag .4s ease-in-out infinite alternate; transform-origin:-46px -60px; }
+  @keyframes wag { from{transform:rotate(-10deg)} to{transform:rotate(10deg)} }
+  .head { animation:nod 1.3s ease-in-out infinite alternate; transform-origin:44px -50px; }
+  @keyframes nod { from{transform:rotate(-2.5deg)} to{transform:rotate(3deg)} }
+  .earL { animation:flick 3.4s ease-in-out infinite; transform-origin:30px -108px; }
+  .earR { animation:flick 3.4s ease-in-out infinite 1.2s; transform-origin:58px -108px; }
+  @keyframes flick { 0%,88%,100%{transform:rotate(0)} 92%{transform:rotate(-8deg)} 96%{transform:rotate(4deg)} }
+  .eye { animation:blink 4s infinite; }
+  @keyframes blink { 0%,94%,100%{transform:scaleY(1)} 97%{transform:scaleY(.1)} }
+  .tongue { animation:pant .5s ease-in-out infinite alternate; transform-origin:44px -62px; }
+  @keyframes pant { from{transform:scaleY(.8)} to{transform:scaleY(1.15)} }
+  .scarfEnd { animation:flutter .6s ease-in-out infinite alternate; transform-origin:28px -40px; }
+  @keyframes flutter { from{transform:rotate(-6deg)} to{transform:rotate(8deg)} }
+</style>
+</head>
+<body>
+
+<svg id="stage" viewBox="0 0 960 540" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop id="skyTop" offset="0" stop-color="#c9b8e8"/>
+      <stop id="skyBot" offset="1" stop-color="#ffe4dc"/>
+    </linearGradient>
+    <linearGradient id="snowGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#dde9f6"/>
+    </linearGradient>
+  </defs>
+  <rect y="-1500" width="960" height="2040" fill="url(#sky)"/>
+  <g id="stars"></g>
+  <g id="sun"><circle r="60" fill="#fff6c4" opacity=".3"/><circle r="36" fill="#ffe27a"/></g>
+  <g id="moon">
+    <circle r="48" fill="#fff6d6" opacity=".22"/><circle r="28" fill="#fff6d6"/>
+    <circle cx="-8" cy="-6" r="5" fill="#eadfb8"/><circle cx="10" cy="8" r="4" fill="#eadfb8"/><circle cx="6" cy="-13" r="3" fill="#eadfb8"/>
+  </g>
+  <g id="clouds"></g>
+  <g id="hills2"></g>
+  <g id="ftrees"></g>
+  <g id="hills1"></g>
+  <g id="trees"></g>
+  <rect y="400" width="960" height="140" fill="url(#snowGrad)"/>
+  <rect y="452" width="960" height="88" fill="#e4edf8"/>
+  <rect y="452" width="960" height="4" fill="#fff" opacity=".8"/>
+  <g id="pebbles"></g>
+  <g id="props"></g>
+  <rect id="nightOverlay" y="-1500" width="960" height="2040" fill="#0c1445" opacity="0"/>
+
+  <!-- 포메라니안 강아지 -->
+  <svg id="dog" x="300" y="226" width="360" height="288" viewBox="-100 -150 200 160" style="overflow:visible">
+    <ellipse cx="-2" cy="2" rx="62" ry="6" fill="#1b2a55" opacity=".18"/>
+    <g class="bob">
+      <!-- 까만 꼬리 -->
+      <g class="tail">
+        <g id="tailCloud" fill="#2a2523"></g>
+        <g fill="#4a423e" opacity=".8">
+          <circle cx="-58" cy="-104" r="6"/><circle cx="-48" cy="-110" r="5"/><circle cx="-62" cy="-90" r="5"/>
+        </g>
+      </g>
+
+      <!-- 먼 쪽 다리 -->
+      <g class="legB" style="transform-origin:-22px -30px">
+        <rect x="-31" y="-36" width="18" height="26" rx="7" fill="#c68a58"/>
+        <rect x="-32" y="-18" width="20" height="18" rx="9" fill="#e8e2dc"/>
+      </g>
+      <g class="legA" style="transform-origin:34px -30px">
+        <rect x="25" y="-36" width="18" height="26" rx="7" fill="#c68a58"/>
+        <rect x="24" y="-18" width="20" height="18" rx="9" fill="#e8e2dc"/>
+      </g>
+
+      <!-- 몸통 -->
+      <g id="bodyCloud" fill="#eaa76b"></g>
+      <ellipse cx="-6" cy="-32" rx="30" ry="11" fill="#f9e0c0" opacity=".75"/>
+      <g id="bodyGray" fill="#8a8078" opacity=".5"></g>
+
+      <!-- 가까운 다리 -->
+      <g class="legA" style="transform-origin:-36px -30px">
+        <rect x="-45" y="-36" width="18" height="26" rx="7" fill="#eaa76b"/>
+        <rect x="-46" y="-18" width="20" height="18" rx="9" fill="#fff"/>
+        <path d="M-40 -6 v4 M-36 -6 v4 M-32 -6 v4" stroke="#ddd5cd" stroke-width="1.3" stroke-linecap="round"/>
+      </g>
+      <g class="legB" style="transform-origin:20px -30px">
+        <rect x="11" y="-36" width="18" height="26" rx="7" fill="#eaa76b"/>
+        <rect x="10" y="-18" width="20" height="18" rx="9" fill="#fff"/>
+        <path d="M16 -6 v4 M20 -6 v4 M24 -6 v4" stroke="#ddd5cd" stroke-width="1.3" stroke-linecap="round"/>
+      </g>
+
+      <!-- 빨간 목도리 -->
+      <path d="M14 -54 Q44 -30 76 -54 L74 -40 Q44 -16 16 -40 Z" fill="#e94f5b"/>
+      <path d="M16 -47 Q44 -23 75 -47" stroke="#fff" stroke-width="3" stroke-dasharray="7 9" fill="none" opacity=".6"/>
+      <g class="scarfEnd">
+        <path d="M22 -36 l15 3 l-6 26 l-15 -3 z" fill="#e94f5b"/>
+        <path d="M17 -13 l15 3" stroke="#fff" stroke-width="3" opacity=".6"/>
+      </g>
+
+      <!-- 머리 -->
+      <g class="head">
+        <g class="earL">
+          <path d="M18 -106 L22 -134 L48 -116 Z" fill="#c98f62" stroke="#c98f62" stroke-width="9" stroke-linejoin="round"/>
+          <path d="M25 -112 L27 -125 L38 -117 Z" fill="#ffb7ba" stroke="#ffb7ba" stroke-width="3" stroke-linejoin="round"/>
+        </g>
+        <g class="earR">
+          <path d="M70 -106 L66 -134 L40 -116 Z" fill="#c98f62" stroke="#c98f62" stroke-width="9" stroke-linejoin="round"/>
+          <path d="M63 -112 L61 -125 L50 -117 Z" fill="#ffb7ba" stroke="#ffb7ba" stroke-width="3" stroke-linejoin="round"/>
+        </g>
+        <g id="headCloud" fill="#eeae72"></g>
+        <g id="headGray" fill="#8a8078" opacity=".45"></g>
+        <ellipse cx="30" cy="-108" rx="12" ry="5" fill="#fff" opacity=".22"/>
+
+        <!-- 얼굴 -->
+        <ellipse cx="44" cy="-65" rx="14" ry="10" fill="#fbe9cf"/>
+        <ellipse cx="27" cy="-98" rx="5" ry="3" fill="#fbe9cf"/>
+        <ellipse cx="61" cy="-98" rx="5" ry="3" fill="#fbe9cf"/>
+        <ellipse cx="14" cy="-68" rx="8" ry="4.5" fill="#ff8ba7" opacity=".55"/>
+        <ellipse cx="74" cy="-68" rx="8" ry="4.5" fill="#ff8ba7" opacity=".55"/>
+
+        <g class="eye" style="transform-origin:28px -80px">
+          <ellipse cx="28" cy="-80" rx="8.2" ry="9.8" fill="#2a1a16"/>
+          <ellipse cx="28" cy="-74" rx="5" ry="3.2" fill="#7a4a34" opacity=".7"/>
+          <circle cx="31" cy="-84.5" r="3.4" fill="#fff"/><circle cx="24.5" cy="-76" r="1.7" fill="#fff"/>
+        </g>
+        <g class="eye" style="transform-origin:60px -80px">
+          <ellipse cx="60" cy="-80" rx="8.2" ry="9.8" fill="#2a1a16"/>
+          <ellipse cx="60" cy="-74" rx="5" ry="3.2" fill="#7a4a34" opacity=".7"/>
+          <circle cx="63" cy="-84.5" r="3.4" fill="#fff"/><circle cx="56.5" cy="-76" r="1.7" fill="#fff"/>
+        </g>
+
+        <ellipse class="tongue" cx="44" cy="-57" rx="4.6" ry="5.4" fill="#ff8fa3"/>
+        <path d="M44 -66 V-62 M44 -62 Q39 -57 35 -61 M44 -62 Q49 -57 53 -61" stroke="#4a3226" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <ellipse cx="44" cy="-69.5" rx="5.6" ry="4" fill="#161110"/>
+        <ellipse cx="42.4" cy="-71" rx="1.8" ry="1" fill="#fff" opacity=".75"/>
+      </g>
+    </g>
+  </svg>
+
+  <g id="snow"></g>
+</svg>
+
+<div id="hud" class="glass">
+  <div id="chip">❄️ 겨울 · 아침</div>
+  <div id="display">00:00<small>.00</small></div>
+  <div class="btns">
+    <button id="lap" class="sec" disabled>랩</button>
+    <button id="start">출발! 🐾</button>
+  </div>
+</div>
+<div id="lapsPanel" class="glass"><h3>🐾 랩 기록</h3><ul id="laps"></ul></div>
+<div class="hint">스페이스: 시작/정지 · L: 랩 · R: 초기화</div>
+
+<script>
+const DAY_MS = 60000;   // 하루(아침→낮→저녁→밤)가 한 바퀴 도는 시간
+const W = 960, H = 540;
+const NS = 'http://www.w3.org/2000/svg';
+const $ = id => document.getElementById(id);
+const el = (name, attrs = {}, parent) => {
+  const e = document.createElementNS(NS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+};
+
+/* ---------- 뽀용뽀용 구름 털 ---------- */
+function cloud(g, cx, cy, rx, ry, n, r, a0 = 0, a1 = 360) {
+  const step = (a1 - a0) / n;
+  for (let i = 0; i <= n; i++) {
+    const a = (a0 + i * step) * Math.PI / 180;
+    el('circle', { cx: cx + Math.cos(a) * rx, cy: cy + Math.sin(a) * ry, r }, g);
+  }
+}
+(function fluff() {
+  const t = $('tailCloud');
+  cloud(t, -50, -90, 17, 22, 11, 11);
+  el('ellipse', { cx: -50, cy: -90, rx: 18, ry: 22 }, t);
+  const b = $('bodyCloud');
+  cloud(b, -10, -48, 40, 24, 16, 11);
+  el('ellipse', { cx: -10, cy: -48, rx: 40, ry: 24 }, b);
+  cloud($('bodyGray'), -10, -48, 40, 24, 9, 9, 200, 340);
+  el('ellipse', { cx: -14, cy: -62, rx: 34, ry: 11 }, $('bodyGray'));
+  const h = $('headCloud');
+  cloud(h, 44, -84, 40, 34, 20, 12);
+  el('ellipse', { cx: 44, cy: -84, rx: 40, ry: 34 }, h);
+  el('circle', { cx: 8, cy: -72, r: 13 }, h);
+  el('circle', { cx: 80, cy: -72, r: 13 }, h);
+  cloud($('headGray'), 44, -84, 40, 34, 8, 10, 205, 335);
+  el('ellipse', { cx: 44, cy: -106, rx: 30, ry: 12 }, $('headGray'));
+})();
+
+/* ---------- 반복 스크롤 레이어 ---------- */
+function layer(id, build) {
+  const inner = el('g', {}, $(id));
+  [0, 1].forEach(k => build(el('g', { transform: `translate(${k * W},0)` }, inner)));
+  return inner;
+}
+function hillPath(base, amp, f2, ph) {
+  let d = `M0 ${H} `;
+  for (let x = 0; x <= W; x += 16) {
+    const t = x / W * Math.PI * 2;
+    d += `L${x} ${(base - amp * Math.sin(t + ph) - amp * .45 * Math.sin(t * f2 + ph * 2)).toFixed(1)} `;
+  }
+  return d + `L${W} ${H} Z`;
+}
+const hills2 = layer('hills2', g => el('path', { d: hillPath(330, 36, 3, 0), fill: '#e7eef9' }, g));
+const hills1 = layer('hills1', g => el('path', { d: hillPath(378, 26, 2, 1.7), fill: '#d6e3f3' }, g));
+
+function pine(g, x, base, s, color, caps) {
+  const t = el('g', { transform: `translate(${x},${base}) scale(${s})` }, g);
+  el('rect', { x: -6, y: -24, width: 12, height: 26, rx: 3, fill: '#7a5538' }, t);
+  [[-20, -92, 46], [-55, -122, 37], [-90, -152, 28]].forEach(([by, ay, hw]) => {
+    el('path', { d: `M${-hw} ${by} Q0 ${by + 8} ${hw} ${by} L0 ${ay}Z`, fill: color }, t);
+    if (caps) {
+      const cy = ay + (by - ay) * .5, cw = hw * .52;
+      el('path', { d: `M0 ${ay} L${cw} ${cy} Q${cw / 2} ${cy + 9} 0 ${cy + 3} Q${-cw / 2} ${cy + 9} ${-cw} ${cy}Z`, fill: '#fff' }, t);
+    }
+  });
+}
+const ftrees = layer('ftrees', g => [40, 150, 270, 400, 520, 640, 760, 880].forEach((x, i) =>
+  pine(g, x, 372, .42 + (i % 3) * .06, '#a5bfcb', false)));
+const trees = layer('trees', g => [[70, 1.05], [190, .8], [330, 1.15], [470, .85], [600, 1.0], [730, .78], [860, 1.1]].forEach(([x, s]) =>
+  pine(g, x, 418, s * .95, '#2f6f5e', true)));
+
+// 가로등 · 눈사람 · 눈더미
+const props = layer('props', g => {
+  // 가로등
+  const l = el('g', { transform: 'translate(250,448)' }, g);
+  el('rect', { x: -4, y: -150, width: 8, height: 150, rx: 3, fill: '#3b3f52' }, l);
+  el('circle', { cx: 0, cy: -150, r: 70, fill: '#ffd97a', style: 'opacity:calc(var(--glow,0)*.28)' }, l);
+  el('rect', { x: -12, y: -178, width: 24, height: 28, rx: 6, fill: '#3b3f52' }, l);
+  el('rect', { x: -8, y: -174, width: 16, height: 20, rx: 4, fill: '#ffe9a0', style: 'opacity:calc(.35 + var(--glow,0)*.65)' }, l);
+  el('path', { d: 'M-16 -178 Q0 -196 16 -178Z', fill: '#fff' }, l);
+  // 눈사람
+  const s = el('g', { transform: 'translate(720,452)' }, g);
+  el('ellipse', { cx: 0, cy: 2, rx: 44, ry: 7, fill: '#1b2a55', opacity: .12 }, s);
+  el('circle', { cx: 0, cy: -34, r: 36, fill: '#fff' }, s);
+  el('circle', { cx: 0, cy: -88, r: 25, fill: '#fff' }, s);
+  el('path', { d: 'M-34 -28 Q0 -6 34 -28 Q30 0 0 0 Q-30 0 -34 -28Z', fill: '#dfeaf7', opacity: .6 }, s);
+  el('path', { d: 'M-34 -46 L-62 -64 M34 -46 L62 -66', stroke: '#7a5538', 'stroke-width': 4, 'stroke-linecap': 'round' }, s);
+  el('circle', { cx: -8, cy: -94, r: 3, fill: '#2a2a2a' }, s);
+  el('circle', { cx: 8, cy: -94, r: 3, fill: '#2a2a2a' }, s);
+  el('path', { d: 'M0 -88 L20 -85 L0 -82Z', fill: '#ff9640' }, s);
+  el('path', { d: 'M-24 -68 Q0 -56 24 -68 L22 -60 Q0 -48 -22 -60Z', fill: '#e94f5b' }, s);
+  [-48, -34, -20].forEach(y => el('circle', { cx: 0, cy: y, r: 2.6, fill: '#2a2a2a' }, s));
+  el('path', { d: 'M-22 -108 h44 l-6 -4 q-16 -22 -32 0z', fill: '#38405e' }, s);
+  // 눈더미
+  [[120, 440, 40], [420, 444, 32], [560, 438, 46], [880, 442, 36]].forEach(([x, y, r]) => {
+    el('ellipse', { cx: x, cy: y, rx: r, ry: r * .45, fill: '#fff' }, g);
+    el('ellipse', { cx: x + r * .1, cy: y + r * .2, rx: r * .85, ry: r * .22, fill: '#d3e2f3', opacity: .6 }, g);
+  });
+});
+const pebbles = layer('pebbles', g => [[30, 470], [110, 505], [190, 482], [290, 520], [370, 474], [450, 508], [540, 484], [640, 522], [730, 472], [820, 506], [900, 486]].forEach(([x, y]) =>
+  el('ellipse', { cx: x, cy: y, rx: 13, ry: 3.5, fill: '#fff', opacity: .7 }, g)));
+
+/* 별 · 구름 · 눈송이 */
+const stars = [];
+for (let i = 0; i < 50; i++)
+  stars.push(el('circle', { cx: Math.random() * W, cy: Math.random() * 260, r: .9 + Math.random() * 1.6, fill: '#fff', opacity: 0 }, $('stars')));
+const clouds = [{ x: 140, y: 120, s: 1.5 }, { x: 520, y: 180, s: 1.1 }, { x: 800, y: 90, s: 1.7 }].map(c => {
+  const g = el('g', {}, $('clouds'));
+  [[0, 0, 34, 18], [-28, 7, 26, 14], [28, 7, 28, 15]].forEach(([x, y, rx, ry]) =>
+    el('ellipse', { cx: x * c.s, cy: y * c.s, rx: rx * c.s, ry: ry * c.s, fill: '#fff', opacity: .8 }, g));
+  return { g, ...c };
+});
+const flakes = [];
+for (let i = 0; i < 120; i++) {
+  const size = 1.5 + Math.random() * 3.2;
+  flakes.push({ e: el('circle', { r: size, fill: '#fff', opacity: (.6 + size / 8).toFixed(2) }, $('snow')),
+    x: Math.random() * W, y: Math.random() * H, v: 22 + size * 16, w: .6 + Math.random() * 1.2, ph: Math.random() * 6, par: .1 + size * .12 });
+}
+
+/* ---------- 하늘 색 ---------- */
+const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.substr(i, 2), 16));
+const lerp = (a, b, t) => a + (b - a) * t;
+const mix = (c1, c2, t) => {
+  const a = hex2rgb(c1), b = hex2rgb(c2);
+  return 'rgb(' + a.map((v, i) => Math.round(lerp(v, b[i], t))).join(',') + ')';
+};
+const smooth = t => t * t * (3 - 2 * t);
+const KEYS = [
+  { t: 0,   top: '#c9b8e8', bot: '#ffe4dc', night: 0 },    // 아침
+  { t: .3,  top: '#9ccbf0', bot: '#eaf5ff', night: 0 },    // 낮
+  { t: .6,  top: '#6f5fa8', bot: '#ffb08c', night: .25 },  // 저녁
+  { t: .85, top: '#101845', bot: '#2d3f7c', night: 1 },    // 밤
+  { t: 1,   top: '#c9b8e8', bot: '#ffe4dc', night: 0 }
+];
+function sky(t) {
+  let i = 0;
+  while (i < KEYS.length - 2 && t >= KEYS[i + 1].t) i++;
+  const a = KEYS[i], b = KEYS[i + 1], k = smooth((t - a.t) / (b.t - a.t));
+  return { top: mix(a.top, b.top, k), bot: mix(a.bot, b.bot, k), night: lerp(a.night, b.night, k) };
+}
+
+/* ---------- 장면 업데이트 ---------- */
+const PHASES = ['🌅 아침', '☀️ 낮', '🌇 저녁', '🌙 밤'];
+let lastPhase = -1;
+function scene(ms) {
+  const t = (ms % DAY_MS) / DAY_MS;
+  const sk = sky(t);
+  $('skyTop').setAttribute('stop-color', sk.top);
+  $('skyBot').setAttribute('stop-color', sk.bot);
+  $('nightOverlay').setAttribute('opacity', (sk.night * .38).toFixed(3));
+  $('stage').style.setProperty('--glow', sk.night.toFixed(2));
+  $('dog').style.filter = `brightness(${(1 - sk.night * .18).toFixed(2)})`;
+  stars.forEach((s, i) => s.setAttribute('opacity', (sk.night * (.55 + .45 * Math.sin(ms / 400 + i))).toFixed(2)));
+
+  const sp = t / .68;
+  if (sp <= 1) {
+    $('sun').setAttribute('transform', `translate(${60 + sp * 840},${370 - Math.sin(Math.PI * sp) * 260})`);
+    $('sun').setAttribute('opacity', Math.min(1, Math.sin(Math.PI * sp) * 4).toFixed(2));
+  } else $('sun').setAttribute('opacity', 0);
+  const mp = t >= .65 ? (t - .65) / .5 : t < .15 ? (t + .35) / .5 : -1;
+  if (mp >= 0 && mp <= 1) {
+    $('moon').setAttribute('transform', `translate(${60 + mp * 840},${350 - Math.sin(Math.PI * mp) * 240})`);
+    $('moon').setAttribute('opacity', Math.min(1, Math.sin(Math.PI * mp) * 4).toFixed(2));
+  } else $('moon').setAttribute('opacity', 0);
+
+  const d = ms / 1000 * 90;
+  const sc = (g, f) => g.setAttribute('transform', `translate(${-((d * f) % W)},0)`);
+  sc(hills2, .1); sc(ftrees, .18); sc(hills1, .25); sc(trees, .55); sc(props, 1); sc(pebbles, 1.3);
+  clouds.forEach(c => {
+    const x = ((c.x - ms * .008 * (.6 + c.s * .3)) % (W + 200) + W + 200) % (W + 200) - 100;
+    c.g.setAttribute('transform', `translate(${x},${c.y})`);
+  });
+
+  const phase = t < .2 ? 0 : t < .5 ? 1 : t < .72 ? 2 : 3;
+  if (phase !== lastPhase) { lastPhase = phase; $('chip').textContent = `❄️ 겨울 · ${PHASES[phase]}`; }
+}
+function snow(now, ms) {
+  const sec = now / 1000, d = ms / 1000 * 90;
+  flakes.forEach(p => {
+    const x = ((p.x + Math.sin(sec * p.w + p.ph) * 22 - d * p.par) % W + W) % W;
+    const y = (p.y + sec * p.v) % (H + 20) - 10;
+    p.e.setAttribute('transform', `translate(${x.toFixed(1)},${y.toFixed(1)})`);
+  });
+}
+
+/* ---------- 스탑워치 ---------- */
+let running = false, startT = 0, elapsed = 0, laps = [], lastLap = 0;
+const fmt = ms => {
+  const t = Math.floor(ms / 10), cs = t % 100, s = Math.floor(t / 100) % 60, m = Math.floor(t / 6000);
+  const p = n => String(n).padStart(2, '0');
+  return { main: p(m) + ':' + p(s), cs: p(cs) };
+};
+const text = ms => { const f = fmt(ms); return f.main + '.' + f.cs; };
+const showTime = ms => { const f = fmt(ms); $('display').innerHTML = f.main + '<small>.' + f.cs + '</small>'; };
+
+function frame(now) {
+  if (running) { elapsed = now - startT; showTime(elapsed); }
+  scene(elapsed);
+  snow(now, elapsed);   // 눈은 멈춰 있어도 계속 내림
+  requestAnimationFrame(frame);
+}
+function toggle() {
+  if (!running) {
+    startT = performance.now() - elapsed;
+    $('start').textContent = '잠깐 멈춤'; $('start').className = 'stop';
+    $('lap').textContent = '랩'; $('lap').disabled = false;
+    $('dog').classList.add('walking');
+  } else {
+    $('start').textContent = '다시 출발! 🐾'; $('start').className = '';
+    $('lap').textContent = '처음으로';
+    $('dog').classList.remove('walking');
+  }
+  running = !running;
+}
+function lapOrReset() {
+  if (running) {
+    laps.unshift({ lap: elapsed - lastLap, total: elapsed });
+    lastLap = elapsed;
+    render();
+  } else if (elapsed > 0) {
+    elapsed = 0; lastLap = 0; laps = [];
+    showTime(0);
+    $('start').textContent = '출발! 🐾';
+    $('lap').textContent = '랩'; $('lap').disabled = true;
+    render();
+  }
+}
+function render() {
+  $('lapsPanel').style.display = laps.length ? 'block' : 'none';
+  const times = laps.map(l => l.lap);
+  const best = Math.min(...times), worst = Math.max(...times);
+  $('laps').innerHTML = laps.map((l, i) => {
+    const cls = laps.length > 2 ? (l.lap === best ? 'best' : l.lap === worst ? 'worst' : '') : '';
+    return `<li class="${cls}"><span>${laps.length - i}</span><span>${text(l.lap)}</span><span>${text(l.total)}</span></li>`;
+  }).join('');
+}
+$('start').onclick = toggle;
+$('lap').onclick = lapOrReset;
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); toggle(); }
+  else if (e.key.toLowerCase() === 'l' && !$('lap').disabled) lapOrReset();
+  else if (e.key.toLowerCase() === 'r' && !running) lapOrReset();
+});
+/* 화면 비율에 맞춰 장면 영역 조정 (좁은 화면에서도 강아지가 잘리지 않게) */
+function fit() {
+  const a = innerWidth / innerHeight;
+  const vw = a >= 1.2 ? 960 : 720;
+  const vh = Math.max(vw / a, 440);
+  $('stage').setAttribute('viewBox', `${(960 - vw) / 2} ${540 - vh} ${vw} ${vh}`);
+}
+addEventListener('resize', fit);
+fit();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
